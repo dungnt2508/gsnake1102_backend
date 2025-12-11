@@ -50,8 +50,11 @@ export default async function productArtifactRoutes(fastify: FastifyInstance) {
                 const buffer = Buffer.concat(chunks);
 
                 // Determine artifact type from filename or query param
-                const artifactTypeParam = (request.query as any).artifact_type as string || 'other';
+                const queryParams = request.query as any;
+                const artifactTypeParam = queryParams.artifact_type as string || 'other';
                 const artifactType = artifactTypeParam as ArtifactType;
+                const version = queryParams.version as string | undefined;
+                const isPrimaryOverride = queryParams.is_primary !== undefined ? queryParams.is_primary === 'true' || queryParams.is_primary === true : undefined;
 
                 // Determine storage subdirectory based on artifact type
                 let storageSubdir: 'artifacts' | 'thumbnails' | 'screenshots' = 'artifacts';
@@ -69,7 +72,9 @@ export default async function productArtifactRoutes(fastify: FastifyInstance) {
                 );
 
                 // Determine if this is primary artifact
-                const isPrimary = artifactType === 'workflow_json' && product.type === 'workflow';
+                const isPrimary = isPrimaryOverride !== undefined
+                    ? Boolean(isPrimaryOverride)
+                    : artifactType === 'workflow_json' && product.type === 'workflow';
 
                 // Save artifact record
                 const artifact = await productArtifactRepository.create({
@@ -81,6 +86,7 @@ export default async function productArtifactRoutes(fastify: FastifyInstance) {
                     mime_type: uploadResult.mimeType,
                     checksum: uploadResult.checksum,
                     is_primary: isPrimary,
+                    version: version || undefined,
                 });
 
                 // Queue security scan for product (async, non-blocking)

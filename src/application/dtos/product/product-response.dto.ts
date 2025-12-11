@@ -15,6 +15,8 @@ export class ProductResponseDto implements ProductDto {
     workflowFileUrl?: string;
     thumbnailUrl?: string = '';
     previewImageUrl?: string = '';
+    videoUrl?: string;
+    contactChannel?: string;
     isFree: boolean = false;
     price?: number;
     currency?: string = 'VND';
@@ -33,6 +35,20 @@ export class ProductResponseDto implements ProductDto {
     features: string[] = [];
     installGuide?: string;
     metadata: Record<string, any> = {};
+    // Phase 1 fields + catalog-open
+    changelog?: string;
+    license?: string;
+    authorContact?: string;
+    supportUrl?: string;
+    screenshots?: string[];
+    platformRequirements?: Record<string, any>;
+    requiredCredentials?: string[];
+    ownershipDeclaration?: boolean;
+    ownershipProofUrl?: string;
+    termsAcceptedAt?: string | null;
+    securityScanStatus?: string;
+    securityScanResult?: Record<string, any>;
+    securityScanAt?: string | null;
     createdAt: string = '';
     updatedAt: string = '';
 

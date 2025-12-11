@@ -126,13 +126,13 @@ export class ProductRepository {
         const result = await pool.query(
             `INSERT INTO products (
                 id, seller_id, title, description, long_description, type, tags,
-                workflow_file_url, thumbnail_url, preview_image_url,
+                workflow_file_url, thumbnail_url, preview_image_url, video_url, contact_channel,
                 is_free, price, currency, price_type, status, review_status, version, requirements, features,
-                install_guide, metadata, changelog, license, author_contact, support_url, screenshots,
-                platform_requirements, ownership_declaration, ownership_proof_url, terms_accepted_at,
+                install_guide, metadata, changelog, license, author_contact, support_url, screenshots, platform_requirements,
+                required_credentials, ownership_declaration, ownership_proof_url, terms_accepted_at,
                 created_at, updated_at, sales_count
             ) VALUES (
-                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35
             ) RETURNING *`,
             [
                 id,
@@ -145,6 +145,8 @@ export class ProductRepository {
                 data.workflow_file_url || null,
                 data.thumbnail_url || null,
                 data.preview_image_url || null,
+                (data as any).video_url || null,
+                (data as any).contact_channel || null,
                 data.is_free,
                 data.price || null,
                 data.currency || 'VND',
@@ -162,6 +164,7 @@ export class ProductRepository {
                 data.support_url || null,
                 data.screenshots ? JSON.stringify(data.screenshots) : '[]',
                 data.platform_requirements ? JSON.stringify(data.platform_requirements) : '{}',
+                (data as any).required_credentials ? JSON.stringify((data as any).required_credentials) : '[]',
                 data.ownership_declaration || false,
                 data.ownership_proof_url || null,
                 data.terms_accepted_at || null,
@@ -213,6 +216,14 @@ export class ProductRepository {
         if (data.preview_image_url !== undefined) {
             updates.push(`preview_image_url = $${paramIndex++}`);
             values.push(data.preview_image_url);
+        }
+        if ((data as any).video_url !== undefined) {
+            updates.push(`video_url = $${paramIndex++}`);
+            values.push((data as any).video_url);
+        }
+        if ((data as any).contact_channel !== undefined) {
+            updates.push(`contact_channel = $${paramIndex++}`);
+            values.push((data as any).contact_channel);
         }
         if (data.is_free !== undefined) {
             updates.push(`is_free = $${paramIndex++}`);
@@ -277,6 +288,10 @@ export class ProductRepository {
         if (data.platform_requirements !== undefined) {
             updates.push(`platform_requirements = $${paramIndex++}`);
             values.push(JSON.stringify(data.platform_requirements));
+        }
+        if ((data as any).required_credentials !== undefined) {
+            updates.push(`required_credentials = $${paramIndex++}`);
+            values.push(JSON.stringify((data as any).required_credentials));
         }
         if (data.ownership_declaration !== undefined) {
             updates.push(`ownership_declaration = $${paramIndex++}`);
@@ -378,7 +393,7 @@ export class ProductRepository {
         return mapDbRow<Product>(
             row,
             [], // No generic JSON fields
-            ['tags', 'requirements', 'features', 'screenshots'], // JSON array fields
+            ['tags', 'requirements', 'features', 'screenshots', 'required_credentials'], // JSON array fields
             ['metadata', 'platform_requirements', 'security_scan_result'], // JSON object fields
             ['downloads', 'rating', 'reviews_count', 'sales_count'] // Number fields (price handled separately)
         );

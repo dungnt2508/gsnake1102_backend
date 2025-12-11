@@ -1,5 +1,5 @@
 import storageService from './storage.service';
-import productRepository from './repositories/product.repository';
+import productRepository from '../repositories/product.repository';
 import scanQueueService from './scan-queue.service';
 import { ProductReviewStatus } from '@gsnake/shared-types';
 import { DomainError, ERROR_CODES } from '../shared/errors';
@@ -142,7 +142,7 @@ export class SecurityScanService {
         }
 
         // Import artifact repository
-        const artifactRepository = (await import('./repositories/product-artifact.repository')).default;
+        const artifactRepository = (await import('../repositories/product-artifact.repository')).default;
 
         // Get all artifacts for product
         const artifacts = await artifactRepository.findByProductId(productId);

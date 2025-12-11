@@ -102,6 +102,16 @@ export const createProductSchema = z.object({
         z.literal(''),
         z.undefined()
     ]).optional(),
+    video_url: z.union([
+        z.string().url('URL video không hợp lệ'),
+        z.literal(''),
+        z.undefined()
+    ]).optional(),
+    contact_channel: z.union([
+        z.string().url('URL liên hệ không hợp lệ'),
+        z.literal(''),
+        z.undefined()
+    ]).optional(),
     is_free: z.boolean().default(true),
     price_type: z.enum(['free', 'onetime', 'subscription']).optional(),
     currency: z.string().max(10, 'Currency tối đa 10 ký tự').optional(),
@@ -112,6 +122,8 @@ export const createProductSchema = z.object({
     features: z.array(z.string()).optional(),
     install_guide: z.string().optional().or(z.literal('')),
     metadata: z.record(z.any()).optional(),
+    platform_requirements: z.record(z.any()).optional(),
+    required_credentials: z.array(z.string()).optional(),
 }).refine(data => {
     // Only validate price if product is not free
     if (data.is_free === false && data.price !== undefined) {
@@ -134,6 +146,8 @@ export const createProductSchema = z.object({
         version: data.version === '' ? undefined : data.version,
         install_guide: data.install_guide === '' ? undefined : data.install_guide,
         currency: data.currency === '' ? undefined : data.currency,
+        video_url: data.video_url === '' ? undefined : data.video_url,
+        contact_channel: data.contact_channel === '' ? undefined : data.contact_channel,
     };
 });
 
@@ -181,6 +195,16 @@ export const updateProductSchema = z.object({
         z.literal(''),
         z.undefined()
     ]).optional(),
+    video_url: z.union([
+        z.string().url('URL video không hợp lệ'),
+        z.literal(''),
+        z.undefined()
+    ]).optional(),
+    contact_channel: z.union([
+        z.string().url('URL liên hệ không hợp lệ'),
+        z.literal(''),
+        z.undefined()
+    ]).optional(),
     is_free: z.boolean().optional(),
     price: z.number().positive('Giá phải là số dương').optional(),
     price_type: z.enum(['free', 'onetime', 'subscription']).optional(),
@@ -193,6 +217,8 @@ export const updateProductSchema = z.object({
     features: z.array(z.string()).optional(),
     install_guide: z.string().optional().or(z.literal('')),
     metadata: z.record(z.any()).optional(),
+    platform_requirements: z.record(z.any()).optional(),
+    required_credentials: z.array(z.string()).optional(),
 }).refine(data => {
     if (data.is_free === false && (!data.price || data.price <= 0)) {
         return false;
@@ -216,6 +242,8 @@ export const updateProductSchema = z.object({
         version: data.version === '' ? undefined : data.version,
         install_guide: data.install_guide === '' ? undefined : data.install_guide,
         currency: data.currency === '' ? undefined : data.currency,
+        video_url: data.video_url === '' ? undefined : data.video_url,
+        contact_channel: data.contact_channel === '' ? undefined : data.contact_channel,
     };
 });
 

@@ -54,6 +54,11 @@ export default async function productWorkflowRoutes(fastify: FastifyInstance) {
                 // Check if workflow details already exist
                 const existing = await productWorkflowRepository.findByProductId(productId);
 
+                // Prepare workflow data with metadata
+                const workflowData: any = {
+                    ...data,
+                };
+
                 // If workflow_json_url is provided, validate the workflow JSON
                 if (data.workflow_json_url) {
                     try {
@@ -67,9 +72,9 @@ export default async function productWorkflowRoutes(fastify: FastifyInstance) {
 
                         // Extract metadata if validation passed
                         const metadata = workflowValidationService.extractWorkflowMetadata(workflowJson);
-                        data.nodes_count = metadata.nodesCount;
-                        data.triggers = metadata.triggers;
-                        data.credentials_required = metadata.credentials;
+                        workflowData.nodes_count = metadata.nodesCount;
+                        workflowData.triggers = metadata.triggers;
+                        workflowData.credentials_required = metadata.credentials;
                     } catch (error: any) {
                         return badRequestResponse(reply, `Failed to validate workflow JSON: ${error.message}`);
                     }
@@ -78,13 +83,13 @@ export default async function productWorkflowRoutes(fastify: FastifyInstance) {
                 let workflow;
                 if (existing) {
                     // Update existing
-                    workflow = await productWorkflowRepository.update(productId, data as any);
+                    workflow = await productWorkflowRepository.update(productId, workflowData);
                 } else {
                     // Create new
                     workflow = await productWorkflowRepository.create({
                         product_id: productId,
-                        ...data,
-                    } as any);
+                        ...workflowData,
+                    });
                 }
 
                 if (!workflow) {
