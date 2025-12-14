@@ -1,193 +1,190 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import llmService from '../services/llm.service';
-import { validate, chatRequestSchema } from '../middleware/validation.middleware';
-import { successResponse, errorResponse, unauthorizedResponse } from '../utils/response';
-import { OpenAIStreamChunk } from '../types/openai';
-import { ZodError } from 'zod';
-import { FRONTEND_URL } from '../config/env';
-import { ChatMessage } from '@gsnake/shared-types';
+import { chatService } from '@/services/chat.service';
+import { validate } from '@/middleware/validation.middleware';
+import { successResponse, errorResponse } from '@/utils/response';
+import { z } from 'zod';
 
 export default async function chatRoutes(fastify: FastifyInstance) {
-    /**
-     * OPTIONS /api/chat
-     * Handle CORS preflight requests
-     */
-    fastify.options('/', async (request: FastifyRequest, reply: FastifyReply) => {
-        reply.code(204).send();
-    });
+  /**
+   * POST /api/chat/recommendations
+   * Get product recommendations based on user query
+   */
+  fastify.post<{ Body: { query: string; limit?: number } }>(
+    '/recommendations',
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const { query, limit = 3 } = request.body;
 
-    /**
-     * POST /api/chat
-     * Send chat message with persona injection
-     * Supports streaming with SSE (Server-Sent Events)
-     */
-    fastify.post(
-        '/',
-        { preHandler: [fastify.authenticate] },
-        async (request: FastifyRequest, reply: FastifyReply) => {
-            try {
-                const userId = request.user?.userId;
-                if (!userId) {
-                    fastify.log.warn('Chat request without userId');
-                    return unauthorizedResponse(reply);
-                }
-
-                fastify.log.debug({ userId, body: request.body as ChatMessage[] }, 'Chat request');
-                
-                const data = validate(chatRequestSchema, request.body as ChatMessage[]);
-                const { messages = [], stream = false } = data;
-                
-                fastify.log.debug({ messagesCount: messages?.length, stream }, 'Validated chat data');
-
-                if (stream) {
-                    // Stream response using Server-Sent Events (SSE)
-                    // Set CORS headers manually for streaming responses
-                    const origin = request.headers.origin;
-                    const allowedOrigin = process.env.NODE_ENV === 'development' 
-                        ? (origin || '*')
-                        : (origin === FRONTEND_URL ? origin : FRONTEND_URL);
-                    
-                    reply.raw.writeHead(200, {
-                        'Content-Type': 'text/event-stream',
-                        'Cache-Control': 'no-cache',
-                        'Connection': 'keep-alive',
-                        'Access-Control-Allow-Origin': allowedOrigin,
-                        'Access-Control-Allow-Credentials': 'true',
-                        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-                        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-                    });
-
-                    const streamResponse = await llmService.chat(userId, messages, true);
-
-                    // Stream tokens to client
-                    for await (const chunk of streamResponse) {
-                        const content = (chunk as OpenAIStreamChunk).choices[0]?.delta?.content || '';
-                        if (content) {
-                            reply.raw.write(`data: ${JSON.stringify({ content })}\n\n`);
-                        }
-                    }
-
-                    reply.raw.write('data: [DONE]\n\n');
-                    reply.raw.end();
-                } else {
-                    // Regular non-streaming response
-                    const response = await llmService.chat(userId, messages, false);
-
-                    successResponse(reply, {
-                        message: {
-                            role: 'assistant' as const,
-                            content: response,
-                        },
-                    });
-                }
-            } catch (error: unknown) {
-                fastify.log.error({ err: error }, 'Chat error');
-                
-                // Handle validation errors
-                if (error instanceof ZodError) {
-                    const message = error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ');
-                    if (reply.raw.headersSent) {
-                        reply.raw.write(`data: ${JSON.stringify({ error: `Validation error: ${message}` })}\n\n`);
-                        reply.raw.end();
-                    } else {
-                        errorResponse(reply, `Validation error: ${message}`, 400, error);
-                    }
-                    return;
-                }
-                
-                if (reply.raw.headersSent) {
-                    // If headers are sent (SSE started), we can't send a JSON error
-                    const message = error instanceof Error ? error.message : 'Stream failed';
-                    reply.raw.write(`data: ${JSON.stringify({ error: message })}\n\n`);
-                    reply.raw.end();
-                } else {
-                    const message = error instanceof Error ? error.message : 'Chat failed';
-                    const { AuthorizationError } = await import('../shared/errors');
-                    const statusCode = error instanceof AuthorizationError ? 401 : 500;
-                    errorResponse(reply, message, statusCode, error);
-                }
-            }
+        if (!query || typeof query !== 'string' || !query.trim()) {
+          return errorResponse(reply, 'Query is required', 400);
         }
-    );
 
-    /**
-     * WebSocket endpoint for streaming chat
-     * Alternative to SSE, using WebSocket
-     */
-    fastify.get(
-        '/stream',
-        { websocket: true },
-        async (connection: any, request: any) => {
-            try {
-                // Verify token from query params or first message
-                const token = (request.query as { token?: string })?.token;
-                
-                if (!token) {
-                    connection.socket.close(1008, 'Missing authentication token');
-                    return;
-                }
+        const recommendations = await chatService.getRecommendations(
+          query,
+          Math.min(limit || 3, 10)
+        );
 
-                // Verify JWT token
-                let userId: string;
-                try {
-                    const decoded = await fastify.jwt.verify<{ userId: string; email: string }>(token);
-                    userId = decoded.userId;
-                    if (!userId) {
-                        connection.socket.close(1008, 'Invalid token payload');
-                        return;
-                    }
-                } catch (err) {
-                    connection.socket.close(1008, 'Invalid or expired token');
-                    return;
-                }
+        return successResponse(reply, recommendations);
+      } catch (error) {
+        console.error('Error in recommendations endpoint:', error);
+        return errorResponse(
+          reply,
+          'Failed to get recommendations',
+          500
+        );
+      }
+    }
+  );
 
-                connection.socket.on('message', async (message: any) => {
-                    try {
-                        const data = JSON.parse(message.toString());
-                        const { messages } = data;
+  /**
+   * POST /api/chat/message
+   * Send chat message and get response
+   */
+  fastify.post<{ Body: { message: string; conversationId?: string } }>(
+    '/message',
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const { message, conversationId } = request.body;
 
-                        if (!messages) {
-                            connection.socket.send(
-                                JSON.stringify({ error: 'messages are required' })
-                            );
-                            return;
-                        }
-
-                        // Use verified userId from token, not from client
-                        const streamResponse = await llmService.chat(userId, messages, true);
-
-                        for await (const chunk of streamResponse) {
-                            const content = (chunk as OpenAIStreamChunk).choices[0]?.delta?.content || '';
-                            if (content) {
-                                connection.socket.send(
-                                    JSON.stringify({
-                                        type: 'chunk',
-                                        content,
-                                    })
-                                );
-                            }
-                        }
-
-                        connection.socket.send(
-                            JSON.stringify({
-                                type: 'done',
-                            })
-                        );
-                    } catch (error: any) {
-                        connection.socket.send(
-                            JSON.stringify({
-                                error: error.message,
-                            })
-                        );
-                    }
-                });
-
-                connection.socket.on('close', () => {
-                    console.log('WebSocket connection closed');
-                });
-            } catch (error: any) {
-                console.error('WebSocket error:', error);
-            }
+        if (!message || typeof message !== 'string' || !message.trim()) {
+          return errorResponse(reply, 'Message is required', 400);
         }
-    );
+
+        const userId = (request as any).user?.id || null;
+
+        // Save user message
+        if (conversationId) {
+          await chatService.saveChatMessage(
+            conversationId,
+            userId,
+            'user',
+            message
+          );
+        }
+
+        // Get recommendations
+        const recommendations = await chatService.getRecommendations(
+          message,
+          3
+        );
+
+        // Save assistant response
+        if (conversationId) {
+          await chatService.saveChatMessage(
+            conversationId,
+            userId,
+            'assistant',
+            'Found recommendations based on your query',
+            { recommendations }
+          );
+        }
+
+        return successResponse(reply, recommendations);
+      } catch (error) {
+        console.error('Error in message endpoint:', error);
+        return errorResponse(reply, 'Failed to process message', 500);
+      }
+    }
+  );
+
+  /**
+   * GET /api/chat/history/:conversationId
+   * Get chat history
+   */
+  fastify.get<{ Params: { conversationId: string } }>(
+    '/history/:conversationId',
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const { conversationId } = request.params;
+
+        const history = await chatService.getChatHistory(conversationId);
+
+        return successResponse(reply, history);
+      } catch (error) {
+        console.error('Error fetching chat history:', error);
+        return errorResponse(
+          reply,
+          'Failed to fetch chat history',
+          500
+        );
+      }
+    }
+  );
+
+  /**
+   * POST /api/chat/lead
+   * Capture email for follow-up
+   */
+  fastify.post<{ Body: { email: string; conversationId?: string } }>(
+    '/lead',
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const { email, conversationId } = request.body;
+
+        if (!email || typeof email !== 'string' || !email.includes('@')) {
+          return errorResponse(reply, 'Valid email is required', 400);
+        }
+
+        const result = await chatService.captureLead(
+          conversationId || `conv_${Date.now()}`,
+          email
+        );
+
+        return successResponse(reply, result);
+      } catch (error) {
+        console.error('Error capturing lead:', error);
+        return errorResponse(reply, 'Failed to capture lead', 500);
+      }
+    }
+  );
+
+  /**
+   * GET /api/chat/categories
+   * Get popular categories for quick suggestions
+   */
+  fastify.get('/categories', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const categories = await chatService.getPopularCategories();
+
+      return successResponse(reply, categories);
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+      return errorResponse(
+        reply,
+        'Failed to fetch categories',
+        500
+      );
+    }
+  });
+
+  /**
+   * POST /api/chat/search
+   * Search products based on query
+   */
+  fastify.post<{ Body: { query: string; limit?: number } }>(
+    '/search',
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const { query, limit = 5 } = request.body;
+
+        if (!query || typeof query !== 'string' || !query.trim()) {
+          return errorResponse(reply, 'Query is required', 400);
+        }
+
+        const results = await chatService.searchProductsByQuery(
+          query,
+          Math.min(limit || 5, 20)
+        );
+
+        return successResponse(reply, results);
+      } catch (error) {
+        console.error('Error searching products:', error);
+        return errorResponse(
+          reply,
+          'Failed to search products',
+          500
+        );
+      }
+    }
+  );
 }

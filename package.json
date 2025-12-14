@@ -13,6 +13,7 @@
         "migrate:role-system": "node scripts/run-migration.js",
         "reset:rate-limit": "node scripts/reset-rate-limit.js",
         "set-admin": "node scripts/set-admin-role.js",
+        "seed:products": "tsx scripts/seed-products.ts",
         "test": "jest",
         "lint": "eslint src --ext .ts"
     },

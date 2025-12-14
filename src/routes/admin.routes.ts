@@ -1,5 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import adminService from '../services/admin.service';
+import productRepository from '../repositories/product.repository';
 import sellerService from '../services/seller.service';
 import { validate } from '../middleware/validation.middleware';
 import { z } from 'zod';
@@ -106,6 +107,45 @@ export default async function adminRoutes(fastify: FastifyInstance) {
     });
 
     /**
+     * GET /api/admin/products
+     * Get all products pending review (or filter by status/review_status)
+     */
+    fastify.get('/products', async (request: FastifyRequest, reply: FastifyReply) => {
+        try {
+            const query = request.query as { 
+                status?: string;
+                review_status?: string;
+                limit?: string; 
+                offset?: string;
+                sort_by?: string;
+                sort_order?: string;
+            };
+            
+            const filters: any = {
+                limit: query.limit ? parseInt(query.limit, 10) : 50,
+                offset: query.offset ? parseInt(query.offset, 10) : 0,
+                sort_by: query.sort_by || 'created_at',
+                sort_order: query.sort_order as any || 'desc',
+                // DEFAULT: Show only PENDING review products
+                review_status: query.review_status || 'pending',
+            };
+
+            if (query.status) filters.status = query.status;
+
+            const result = await productRepository.findMany(filters);
+            
+            successResponse(reply, {
+                products: ProductMapper.toResponseDtoList(result.products),
+                total: result.total,
+                limit: filters.limit,
+                offset: filters.offset,
+            });
+        } catch (error: unknown) {
+            errorResponse(reply, 'Failed to get products', 500, error);
+        }
+    });
+
+    /**
      * GET /api/admin/products/pending
      * Get products pending review
      */
@@ -137,7 +177,7 @@ export default async function adminRoutes(fastify: FastifyInstance) {
             }
 
             const { id } = request.params as { id: string };
-            const body = request.body as { 
+            const body = (request.body || {}) as { 
                 checklist?: Record<string, boolean>;
                 notes?: string;
             };
@@ -170,7 +210,7 @@ export default async function adminRoutes(fastify: FastifyInstance) {
             }
 
             const { id } = request.params as { id: string };
-            const body = request.body as { 
+            const body = (request.body || {}) as { 
                 reason: string;
                 checklist?: Record<string, boolean>;
                 notes?: string;
